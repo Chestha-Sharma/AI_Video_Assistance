@@ -1,5 +1,6 @@
 import os
 import uuid
+import time
 import traceback
 from datetime import datetime
 import shutil
@@ -14,6 +15,7 @@ from CORE.transcriber import transcribe_all
 from CORE.summarize import summarize, generate_title
 from CORE.extractor import extract_actionable_items, extract_key_decisions, extract_questions
 from CORE.rag_engine import build_rag_chain, ask_question
+from CORE.vector_store import release_vector_store
 
 load_dotenv()
 
@@ -27,11 +29,7 @@ CORS(app, resources={r"/api/*": {"origins": FRONTEND_ORIGIN}})
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# In-memory session store: session_id -> { rag_chain, title, transcript, createdAt, ... }
-# NOTE: this is fine for a single-process dev/demo server. For production, swap this
-# for redis / a database, since rag_chain objects won't survive a process restart
-# and won't be shared across multiple workers.
+ 
 SESSIONS = {}
 
 
@@ -47,6 +45,24 @@ def _serialize_session(session_id: str) -> dict:
         "questions": s["questions"],
         "created_at": s["created_at"],
     }
+
+
+def _safe_rmtree(path, retries=5, delay=0.3):
+    """Windows pe file handle release hone mein thoda delay lagta hai,
+    isliye chhoti retry ke saath delete karo."""
+    for attempt in range(retries):
+        try:
+            if os.path.isfile(path) or os.path.islink(path):
+                os.remove(path)
+            elif os.path.isdir(path):
+                shutil.rmtree(path)
+            return True
+        except Exception as e:
+            if attempt == retries - 1:
+                print(f"Could not delete {path} after {retries} tries: {e}")
+                return False
+            time.sleep(delay)
+    return False
 
 
 @app.get("/api/health")
@@ -94,11 +110,13 @@ def process_source():
         action_items = extract_actionable_items(transcript)
         key_decisions = extract_key_decisions(transcript)
         questions = extract_questions(transcript)
-        rag_chain = build_rag_chain(transcript)
-
         session_id = str(uuid.uuid4())
+
+        rag_chain, vector_store = build_rag_chain(transcript, session_id=session_id)
+
         SESSIONS[session_id] = {
             "rag_chain": rag_chain,
+            "vector_store": vector_store,
             "title": title,
             "transcript": transcript,
             "summary": summary,
@@ -106,7 +124,7 @@ def process_source():
             "key_decisions": key_decisions,
             "questions": questions,
             "created_at": datetime.utcnow().isoformat() + "Z",
-            "uploaded_path": uploaded_path,  # None if source was a YouTube URL
+            "uploaded_path": uploaded_path,
         }
 
         return jsonify(_serialize_session(session_id))
@@ -152,50 +170,41 @@ def chat():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+
 @app.post("/api/clear")
 def clear_session():
-    """
-    Body: { "session_id": "..." }  (optional)
-
-    Clears in-memory session data, deletes everything inside the downloads
-    folder, and wipes the vector_db folder so storage doesn't keep filling up.
-    """
     try:
         data = request.get_json(silent=True) or {}
         session_id = data.get("session_id")
 
         if session_id and session_id in SESSIONS:
-            SESSIONS.pop(session_id)
+            session_data = SESSIONS.pop(session_id)
+            vector_store = session_data.get("vector_store")
 
-        # Clear downloads folder (covers YouTube-downloaded audio + uploaded files)
+            if vector_store:
+                try:
+                    vector_store.delete_collection()
+                except Exception as inner_e:
+                    print(f"Could not delete collection: {inner_e}")
+ 
+            release_vector_store(vector_store)
+
+        # Clear downloads folder
         if os.path.exists(UPLOAD_DIR):
             for f in os.listdir(UPLOAD_DIR):
-                fpath = os.path.join(UPLOAD_DIR, f)
-                try:
-                    if os.path.isfile(fpath) or os.path.islink(fpath):
-                        os.remove(fpath)
-                    elif os.path.isdir(fpath):
-                        shutil.rmtree(fpath)
-                except Exception as inner_e:
-                    print(f"Could not delete {fpath}: {inner_e}")
+                _safe_rmtree(os.path.join(UPLOAD_DIR, f))
 
-        # Clear vector_db folder
+        # Clear vector_db folder (delete_collection() doesn't remove the on-disk index folder)
         if os.path.exists(VECTOR_DIR):
             for f in os.listdir(VECTOR_DIR):
-                fpath = os.path.join(VECTOR_DIR, f)
-                try:
-                    if os.path.isfile(fpath) or os.path.islink(fpath):
-                        os.remove(fpath)
-                    elif os.path.isdir(fpath):
-                        shutil.rmtree(fpath)
-                except Exception as inner_e:
-                    print(f"Could not delete {fpath}: {inner_e}")
+                _safe_rmtree(os.path.join(VECTOR_DIR, f))
 
         return jsonify({"message": "Session cleared", "session_id": session_id}), 200
 
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))

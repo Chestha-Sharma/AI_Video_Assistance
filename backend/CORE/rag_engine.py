@@ -17,13 +17,12 @@ def format_docs(docs):
     return "\n\n".join([doc.page_content for doc in docs])
 
 
-def build_rag_chain(transcript : str):  # ye question bnaega or neeche waa question ko load karega
-
-    vector_store = build_vector_store(transcript)
-    retriever = get_retriver(vector_store,k=4)
+def build_rag_chain(transcript: str, session_id: str = None):
+    vector_store = build_vector_store(transcript, session_id=session_id)
+    retriever = get_retriver(vector_store, k=4)
 
     llm = get_llm()
-    
+
     prompt = ChatPromptTemplate.from_messages([
         ("system",
             """You are an expert meeting assistant. Answer the user's question 
@@ -40,17 +39,15 @@ Context from meeting transcript:
         ("human", "{question}"),
     ])
 
-    # full LCEL rag pipeline
-
     rag_chain = (
         {
-            "context":retriever |RunnableLambda(format_docs),
-            "question":RunnablePassthrough(), # abhi question or aage kabhi question aaye se to ye seedha trigger ho sake iske liye
-         }
-         | prompt | llm | StrOutputParser()
+            "context": retriever | RunnableLambda(format_docs),
+            "question": RunnablePassthrough(),
+        }
+        | prompt | llm | StrOutputParser()
     )
 
-    return rag_chain
+    return rag_chain, vector_store
 
 def load_rag_chain(rag_chain : str):
     vector_store = load_vector_store()

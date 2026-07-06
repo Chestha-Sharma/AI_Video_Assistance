@@ -12,7 +12,7 @@ from pydub import AudioSegment
 AudioSegment.converter = imageio_ffmpeg.get_ffmpeg_exe()
 
 DOWNLOAD_DIR = 'downloads'
-os.makedirs(DOWNLOAD_DIR,exist_ok = True) # directory noe exist then it will make it
+os.makedirs(DOWNLOAD_DIR,exist_ok = True) # if directory does not exist then it will make it
 
 
 def download_youtube_audio(url : str) -> str : # to download audio from youtube
@@ -27,7 +27,8 @@ def download_youtube_audio(url : str) -> str : # to download audio from youtube
                 "preferredquality": "192",
             }
         ], 
-        "ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe(),
+        "ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe(), 
+        "format": "bestaudio/best",
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl: # with functionality kisi file ko open krne ke baad apne aap close bhi kar deta h
         info = ydl.extract_info(url, download=True)
