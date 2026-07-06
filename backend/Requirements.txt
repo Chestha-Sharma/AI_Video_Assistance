@@ -46,3 +46,4 @@ requests>=2.32.0
 yt-dlp
 pydub
 imageio-ffmpeg
+gunicorn
