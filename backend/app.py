@@ -1,29 +1,42 @@
 import os
 import uuid
 import time
+import shutil
 import traceback
 from datetime import datetime
-import shutil
+from typing import Optional
 
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from fastapi import FastAPI, Request, File, UploadFile, Form, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from dotenv import load_dotenv
-from werkzeug.utils import secure_filename
 
 load_dotenv()
 
 VECTOR_DIR = os.path.join(os.path.dirname(__file__), "vector_db")
-os.makedirs(VECTOR_DIR, exist_ok=True)
-
-app = Flask(__name__)
-
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")
-CORS(app, resources={r"/api/*": {"origins": FRONTEND_ORIGIN}})
-
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
+os.makedirs(VECTOR_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
- 
+
+app = FastAPI(title="AI Video Assistance Backend")
+
+# CORS Setup - Open for production reliability to stop 'Failed to process' bugs
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 SESSIONS = {}
+
+class ChatRequest(BaseModel):
+    session_id: str
+    question: str
+
+class ClearRequest(BaseModel):
+    session_id: Optional[str] = None
 
 
 def _serialize_session(session_id: str) -> dict:
@@ -57,44 +70,59 @@ def _safe_rmtree(path, retries=5, delay=0.3):
 
 
 @app.get("/api/health")
-def health():
-    return jsonify({"status": "ok"})
+async def health():
+    return {"status": "ok"}
 
 
 @app.post("/api/process")
-def process_source():
+async def process_source(
+    source: Optional[str] = Form(None),
+    translate: Optional[str] = Form("false"),
+    file: Optional[UploadFile] = File(None),
+    request: Request = None
+):
     try:
-        translate = False
-        source = None
+        is_translate = False
         uploaded_path = None
+        final_source = ""
 
-        if request.content_type and "multipart/form-data" in request.content_type:
-            translate = request.form.get("translate", "false").strip().lower() in ("true", "1", "yes", "y")
-            uploaded = request.files.get("file")
-            if not uploaded or uploaded.filename == "":
-                return jsonify({"error": "No file uploaded"}), 400
-            filename = secure_filename(uploaded.filename)
-            save_path = os.path.join(UPLOAD_DIR, filename)
-            uploaded.save(save_path)
-            source = save_path
+        # Check for multipart file upload
+        if file is not None and file.filename != "":
+            is_translate = translate.strip().lower() in ("true", "1", "yes", "y")
+            
+            # Safe filename extraction
+            base_filename = os.path.basename(file.filename)
+            save_path = os.path.join(UPLOAD_DIR, base_filename)
+            
+            with open(save_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+                
+            final_source = save_path
             uploaded_path = save_path
         else:
-            data = request.get_json(silent=True) or {}
-            source = (data.get("source") or "").strip()
-            translate = bool(data.get("translate", False))
-            if not source:
-                return jsonify({"error": "'source' (YouTube URL or file path) is required"}), 400
+            # Handle standard JSON body text fallback
+            try:
+                body = await request.json()
+                final_source = (body.get("source") or "").strip()
+                is_translate = bool(body.get("translate", False))
+            except Exception:
+                # If content was form data but without a file
+                if source:
+                    final_source = source.strip()
+                    is_translate = translate.strip().lower() in ("true", "1", "yes", "y")
+
+        if not final_source:
+            raise HTTPException(status_code=400, detail="'source' or file upload is required")
 
         # ── LAZY IMPORTS HERE ──
-        # Heavy ML files function ke andar import hongi taaki server turant bind ho jaye
         from utils.audio_processor import process_input
         from CORE.transcriber import transcribe_all
         from CORE.summarize import summarize, generate_title
         from CORE.extractor import extract_actionable_items, extract_key_decisions, extract_questions
         from CORE.rag_engine import build_rag_chain
 
-        chunks = process_input(source)
-        transcript = transcribe_all(chunks, translate)
+        chunks = process_input(final_source)
+        transcript = transcribe_all(chunks, is_translate)
 
         title = generate_title(transcript)
         summary = summarize(transcript)
@@ -118,31 +146,32 @@ def process_source():
             "uploaded_path": uploaded_path,
         }
 
-        return jsonify(_serialize_session(session_id))
+        return _serialize_session(session_id)
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/session/<session_id>")
-def get_session(session_id):
+@app.get("/api/session/{session_id}")
+async def get_session(session_id: str):
     if session_id not in SESSIONS:
-        return jsonify({"error": "Session not found"}), 404
-    return jsonify(_serialize_session(session_id))
+        raise HTTPException(status_code=404, detail="Session not found")
+    return _serialize_session(session_id)
 
 
 @app.post("/api/chat")
-def chat():
+async def chat(payload: ChatRequest):
     try:
-        data = request.get_json(silent=True) or {}
-        session_id = data.get("session_id")
-        question = (data.get("question") or "").strip()
+        session_id = payload.session_id
+        question = payload.question.strip()
 
-        if not session_id or session_id not in SESSIONS:
-            return jsonify({"error": "Invalid or expired session_id"}), 400
+        if session_id not in SESSIONS:
+            raise HTTPException(status_code=400, detail="Invalid or expired session_id")
         if not question:
-            return jsonify({"error": "'question' is required"}), 400
+            raise HTTPException(status_code=400, detail="'question' is required")
 
         # ── LAZY IMPORT FOR CHAT ──
         from CORE.rag_engine import ask_question
@@ -150,22 +179,23 @@ def chat():
         rag_chain = SESSIONS[session_id]["rag_chain"]
         answer = ask_question(rag_chain, question)
 
-        return jsonify({
+        return {
             "answer": answer,
             "question": question,
             "created_at": datetime.utcnow().isoformat() + "Z",
-        })
+        }
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/clear")
-def clear_session():
+async def clear_session(payload: ClearRequest):
     try:
-        data = request.get_json(silent=True) or {}
-        session_id = data.get("session_id")
+        session_id = payload.session_id
 
         if session_id and session_id in SESSIONS:
             session_data = SESSIONS.pop(session_id)
@@ -189,14 +219,14 @@ def clear_session():
             for f in os.listdir(VECTOR_DIR):
                 _safe_rmtree(os.path.join(VECTOR_DIR, f))
 
-        return jsonify({"message": "Session cleared", "session_id": session_id}), 200
+        return {"message": "Session cleared", "session_id": session_id}
 
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT"))
-    debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-    app.run(host="0.0.0.0", port=port, debug=debug, use_reloader=False)
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
