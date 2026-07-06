@@ -2,6 +2,7 @@ import os
 import uuid
 import traceback
 from datetime import datetime
+import shutil
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -16,8 +17,11 @@ from CORE.rag_engine import build_rag_chain, ask_question
 
 load_dotenv()
 
+VECTOR_DIR = os.path.join(os.path.dirname(__file__), "vector_db")
+os.makedirs(VECTOR_DIR, exist_ok=True)
+
 app = Flask(__name__)
- 
+
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "*")
 CORS(app, resources={r"/api/*": {"origins": FRONTEND_ORIGIN}})
 
@@ -63,6 +67,7 @@ def process_source():
     try:
         translate = False
         source = None
+        uploaded_path = None  # track so we can delete it later on clear
 
         if request.content_type and "multipart/form-data" in request.content_type:
             translate = request.form.get("translate", "false").strip().lower() in ("true", "1", "yes", "y")
@@ -73,6 +78,7 @@ def process_source():
             save_path = os.path.join(UPLOAD_DIR, filename)
             uploaded.save(save_path)
             source = save_path
+            uploaded_path = save_path
         else:
             data = request.get_json(silent=True) or {}
             source = (data.get("source") or "").strip()
@@ -100,6 +106,7 @@ def process_source():
             "key_decisions": key_decisions,
             "questions": questions,
             "created_at": datetime.utcnow().isoformat() + "Z",
+            "uploaded_path": uploaded_path,  # None if source was a YouTube URL
         }
 
         return jsonify(_serialize_session(session_id))
@@ -145,8 +152,52 @@ def chat():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+@app.post("/api/clear")
+def clear_session():
+    """
+    Body: { "session_id": "..." }  (optional)
+
+    Clears in-memory session data, deletes everything inside the downloads
+    folder, and wipes the vector_db folder so storage doesn't keep filling up.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+
+        if session_id and session_id in SESSIONS:
+            SESSIONS.pop(session_id)
+
+        # Clear downloads folder (covers YouTube-downloaded audio + uploaded files)
+        if os.path.exists(UPLOAD_DIR):
+            for f in os.listdir(UPLOAD_DIR):
+                fpath = os.path.join(UPLOAD_DIR, f)
+                try:
+                    if os.path.isfile(fpath) or os.path.islink(fpath):
+                        os.remove(fpath)
+                    elif os.path.isdir(fpath):
+                        shutil.rmtree(fpath)
+                except Exception as inner_e:
+                    print(f"Could not delete {fpath}: {inner_e}")
+
+        # Clear vector_db folder
+        if os.path.exists(VECTOR_DIR):
+            for f in os.listdir(VECTOR_DIR):
+                fpath = os.path.join(VECTOR_DIR, f)
+                try:
+                    if os.path.isfile(fpath) or os.path.islink(fpath):
+                        os.remove(fpath)
+                    elif os.path.isdir(fpath):
+                        shutil.rmtree(fpath)
+                except Exception as inner_e:
+                    print(f"Could not delete {fpath}: {inner_e}")
+
+        return jsonify({"message": "Session cleared", "session_id": session_id}), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    debug = os.getenv("FLASK_DEBUG", "false").lower() == "true" 
+    debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     app.run(host="0.0.0.0", port=port, debug=debug, use_reloader=False)

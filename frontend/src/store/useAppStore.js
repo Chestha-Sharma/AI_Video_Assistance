@@ -37,7 +37,19 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
-  clearSession: () => set({ session: null, messages: [] }),
+clearSession: async () => {
+  const currentSession = get().session
+
+  try {
+    if (currentSession?.session_id) {
+      await axiosInstance.post('/clear', { session_id: currentSession.session_id })
+    }
+  } catch (err) {
+    console.error("Backend cleanup failed:", err)
+  }
+
+  set({ session: null, messages: [] })
+},
 
   sendMessage: async (question) => {
     const { session, messages } = get()
