@@ -17,7 +17,7 @@ os.makedirs(VECTOR_DIR, exist_ok=True)
 
 app = Flask(__name__)
 
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "*")
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")
 CORS(app, resources={r"/api/*": {"origins": FRONTEND_ORIGIN}})
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
@@ -197,6 +197,6 @@ def clear_session():
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
+    port = int(os.getenv("PORT"))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     app.run(host="0.0.0.0", port=port, debug=debug, use_reloader=False)
