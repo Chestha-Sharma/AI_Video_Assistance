@@ -19,11 +19,11 @@ os.makedirs(VECTOR_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = FastAPI(title="AI Video Assistance Backend")
-
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")
 # CORS Setup - Open for production reliability to stop 'Failed to process' bugs
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[FRONTEND_ORIGIN],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
