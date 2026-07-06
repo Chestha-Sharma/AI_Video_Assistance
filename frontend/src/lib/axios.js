@@ -1,7 +1,10 @@
 import axios from 'axios'
 
-// In dev, Vite proxies /api -> http://localhost:8000 (see vite.config.js)
-// In prod, point VITE_API_URL at your deployed Flask backend.
+// Production mein VITE_API_URL ke sath '/api' lagana zaroori hai
+const prodBaseURL = import.meta.env.VITE_API_URL 
+  ? `${import.meta.env.VITE_API_URL}/api` 
+  : '/api';
+
 export const axiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: prodBaseURL,
 })

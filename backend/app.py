@@ -10,13 +10,6 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 
-from utils.audio_processor import process_input
-from CORE.transcriber import transcribe_all
-from CORE.summarize import summarize, generate_title
-from CORE.extractor import extract_actionable_items, extract_key_decisions, extract_questions
-from CORE.rag_engine import build_rag_chain, ask_question
-from CORE.vector_store import release_vector_store
-
 load_dotenv()
 
 VECTOR_DIR = os.path.join(os.path.dirname(__file__), "vector_db")
@@ -48,8 +41,6 @@ def _serialize_session(session_id: str) -> dict:
 
 
 def _safe_rmtree(path, retries=5, delay=0.3):
-    """Windows pe file handle release hone mein thoda delay lagta hai,
-    isliye chhoti retry ke saath delete karo."""
     for attempt in range(retries):
         try:
             if os.path.isfile(path) or os.path.islink(path):
@@ -72,18 +63,10 @@ def health():
 
 @app.post("/api/process")
 def process_source():
-    """
-    Kicks off the full pipeline (same steps as main.py's run_pipeline):
-    transcribe -> title -> summary -> action items -> decisions -> questions -> rag chain
-
-    Accepts EITHER:
-      - JSON body: { "source": "<youtube url or path>", "translate": true|false }
-      - multipart/form-data: file=<uploaded file>, translate=true|false
-    """
     try:
         translate = False
         source = None
-        uploaded_path = None  # track so we can delete it later on clear
+        uploaded_path = None
 
         if request.content_type and "multipart/form-data" in request.content_type:
             translate = request.form.get("translate", "false").strip().lower() in ("true", "1", "yes", "y")
@@ -101,6 +84,14 @@ def process_source():
             translate = bool(data.get("translate", False))
             if not source:
                 return jsonify({"error": "'source' (YouTube URL or file path) is required"}), 400
+
+        # ── LAZY IMPORTS HERE ──
+        # Heavy ML files function ke andar import hongi taaki server turant bind ho jaye
+        from utils.audio_processor import process_input
+        from CORE.transcriber import transcribe_all
+        from CORE.summarize import summarize, generate_title
+        from CORE.extractor import extract_actionable_items, extract_key_decisions, extract_questions
+        from CORE.rag_engine import build_rag_chain
 
         chunks = process_input(source)
         transcript = transcribe_all(chunks, translate)
@@ -143,10 +134,6 @@ def get_session(session_id):
 
 @app.post("/api/chat")
 def chat():
-    """
-    Body: { "session_id": "...", "question": "..." }
-    Runs the question through the RAG chain built for that session.
-    """
     try:
         data = request.get_json(silent=True) or {}
         session_id = data.get("session_id")
@@ -156,6 +143,9 @@ def chat():
             return jsonify({"error": "Invalid or expired session_id"}), 400
         if not question:
             return jsonify({"error": "'question' is required"}), 400
+
+        # ── LAZY IMPORT FOR CHAT ──
+        from CORE.rag_engine import ask_question
 
         rag_chain = SESSIONS[session_id]["rag_chain"]
         answer = ask_question(rag_chain, question)
@@ -187,14 +177,14 @@ def clear_session():
                 except Exception as inner_e:
                     print(f"Could not delete collection: {inner_e}")
  
+            # ── LAZY IMPORT FOR CLEAR ──
+            from CORE.vector_store import release_vector_store
             release_vector_store(vector_store)
 
-        # Clear downloads folder
         if os.path.exists(UPLOAD_DIR):
             for f in os.listdir(UPLOAD_DIR):
                 _safe_rmtree(os.path.join(UPLOAD_DIR, f))
 
-        # Clear vector_db folder (delete_collection() doesn't remove the on-disk index folder)
         if os.path.exists(VECTOR_DIR):
             for f in os.listdir(VECTOR_DIR):
                 _safe_rmtree(os.path.join(VECTOR_DIR, f))
