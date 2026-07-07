@@ -4,14 +4,12 @@ import { axiosInstance } from '../lib/axios'
 import { getCookie, setCookie, deleteCookie } from '../lib/cookies'
 
 const CHAT_COOKIE = 'ava_chat_messages'
-
-// Cookies have a hard ~4KB size ceiling. If the serialized chat grows past
-// that, keep only the most recent messages so saving never silently fails.
+ 
 function saveMessagesToCookie(messages) {
   let toStore = messages
   let serialized = JSON.stringify(toStore)
   while (serialized.length > 3800 && toStore.length > 1) {
-    toStore = toStore.slice(-Math.max(1, toStore.length - 2)) // drop oldest 2 at a time
+    toStore = toStore.slice(-Math.max(1, toStore.length - 2))  
     serialized = JSON.stringify(toStore)
   }
   setCookie(CHAT_COOKIE, serialized)
@@ -28,13 +26,11 @@ function loadMessagesFromCookie() {
   }
 }
 
-export const useAppStore = create((set, get) => ({
-  // pipeline / session state
-  session: null,          // { session_id, title, transcript, summary, action_items, key_decisions, questions }
+export const useAppStore = create((set, get) => ({ 
+  session: null,         
   isProcessing: false,
-
-  // chat (RAG) state — restored from cookie on load
-  messages: loadMessagesFromCookie(),           // [{ _id, role: 'user' | 'assistant', text, createdAt }]
+ 
+  messages: loadMessagesFromCookie(),         
   isChatLoading: false,
 
   processSource: async ({ source, translate, file }) => {
@@ -52,11 +48,11 @@ export const useAppStore = create((set, get) => ({
         res = await axiosInstance.post('/process', { source, translate })
       }
       set({ session: res.data })
-      deleteCookie(CHAT_COOKIE) // new video -> old chat no longer applies
+      deleteCookie(CHAT_COOKIE) 
       toast.success('Video processed successfully')
       return res.data
     } catch (err) {
-      const msg = err?.response?.data?.error || 'Failed to process source'
+      const msg = err?.response?.data?.detail || 'Failed to process source'
       toast.error(msg)
       throw err
     } finally {
@@ -110,7 +106,7 @@ clearSession: async () => {
       set({ messages: updated })
       saveMessagesToCookie(updated)
     } catch (err) {
-      const msg = err?.response?.data?.error || 'Failed to get an answer'
+      const msg = err?.response?.data?.detail || 'Failed to get an answer'
       toast.error(msg)
     } finally {
       set({ isChatLoading: false })

@@ -8,11 +8,18 @@ import os
 import yt_dlp
 import imageio_ffmpeg
 from pydub import AudioSegment
+import static_ffmpeg
+
+
+static_ffmpeg.add_paths()
 
 AudioSegment.converter = imageio_ffmpeg.get_ffmpeg_exe()
 
-DOWNLOAD_DIR = 'downloads'
-os.makedirs(DOWNLOAD_DIR,exist_ok = True) # if directory not exist then it will make it
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+ # if directory not exist then it will make it
 
 
 def download_youtube_audio(url : str) -> str : # to download audio from youtube
@@ -38,11 +45,15 @@ def download_youtube_audio(url : str) -> str : # to download audio from youtube
 
 
 
-def convert_audio_to_wav(audio_file_path : str) -> str : # to download audio of local video file
+def convert_audio_to_wav(audio_file_path: str) -> str:
     output_path = os.path.splitext(audio_file_path)[0] + "_converted.wav"
-    audio = AudioSegment.from_file(audio_file_path) # automatic detect krta h ki input file kkis type ki h .webd or mp4 etc
-    audio = audio.set_channels(1).set_frame_rate(16000) # set_channels(1) converts dual audio into monoaudio and next set frame rate 16khz
-    audio.export(output_path, format="wav") #saved
+    ext = os.path.splitext(audio_file_path)[1].lstrip(".").lower() or None
+    try:
+        audio = AudioSegment.from_file(audio_file_path, format=ext)
+    except IndexError:
+        raise ValueError("This file has no audio track. Please upload a video/audio file that contains sound.")
+    audio = audio.set_channels(1).set_frame_rate(16000)
+    audio.export(output_path, format="wav")
     return output_path
 
 

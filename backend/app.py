@@ -107,7 +107,15 @@ async def process_source(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
+            try:
+                os.remove(tmp_path)
+            except PermissionError:
+                import time
+                time.sleep(0.5)
+                try:
+                    os.remove(tmp_path)
+                except PermissionError:
+                    print(f"[cleanup] could not delete temp file: {tmp_path}")
 
 
 @app.post("/api/clear")

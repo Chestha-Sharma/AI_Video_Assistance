@@ -9,8 +9,10 @@ from langchain_core.documents import Document
 
 
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CHROMA_DIR = os.path.join(BASE_DIR, "vector_db")
 
-CHROMA_DIR = "vector_db"
+
 COLLECTION_NAME = "meeting_transcripts"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
