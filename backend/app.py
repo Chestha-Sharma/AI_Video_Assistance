@@ -6,6 +6,14 @@ import traceback
 from datetime import datetime
 from typing import Optional
 
+
+ 
+from utils.audio_processor import process_input
+from CORE.transcriber import transcribe_all
+from CORE.summarize import summarize, generate_title
+from CORE.extractor import extract_actionable_items, extract_key_decisions, extract_questions
+from CORE.rag_engine import build_rag_chain
+
 from fastapi import FastAPI, Request, File, UploadFile, Form, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -114,12 +122,6 @@ async def process_source(
         if not final_source:
             raise HTTPException(status_code=400, detail="'source' or file upload is required")
 
-        # ── LAZY IMPORTS HERE ──
-        from utils.audio_processor import process_input
-        from CORE.transcriber import transcribe_all
-        from CORE.summarize import summarize, generate_title
-        from CORE.extractor import extract_actionable_items, extract_key_decisions, extract_questions
-        from CORE.rag_engine import build_rag_chain
 
         chunks = process_input(final_source)
         transcript = transcribe_all(chunks, is_translate)
