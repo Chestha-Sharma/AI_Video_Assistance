@@ -1,14 +1,40 @@
 import { create } from 'zustand'
 import toast from 'react-hot-toast'
 import { axiosInstance } from '../lib/axios'
+import { getCookie, setCookie, deleteCookie } from '../lib/cookies'
+
+const CHAT_COOKIE = 'ava_chat_messages'
+
+// Cookies have a hard ~4KB size ceiling. If the serialized chat grows past
+// that, keep only the most recent messages so saving never silently fails.
+function saveMessagesToCookie(messages) {
+  let toStore = messages
+  let serialized = JSON.stringify(toStore)
+  while (serialized.length > 3800 && toStore.length > 1) {
+    toStore = toStore.slice(-Math.max(1, toStore.length - 2)) // drop oldest 2 at a time
+    serialized = JSON.stringify(toStore)
+  }
+  setCookie(CHAT_COOKIE, serialized)
+}
+
+function loadMessagesFromCookie() {
+  const raw = getCookie(CHAT_COOKIE)
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
 
 export const useAppStore = create((set, get) => ({
   // pipeline / session state
   session: null,          // { session_id, title, transcript, summary, action_items, key_decisions, questions }
   isProcessing: false,
 
-  // chat (RAG) state
-  messages: [],           // [{ _id, role: 'user' | 'assistant', text, createdAt }]
+  // chat (RAG) state — restored from cookie on load
+  messages: loadMessagesFromCookie(),           // [{ _id, role: 'user' | 'assistant', text, createdAt }]
   isChatLoading: false,
 
   processSource: async ({ source, translate, file }) => {
@@ -26,6 +52,7 @@ export const useAppStore = create((set, get) => ({
         res = await axiosInstance.post('/process', { source, translate })
       }
       set({ session: res.data })
+      deleteCookie(CHAT_COOKIE) // new video -> old chat no longer applies
       toast.success('Video processed successfully')
       return res.data
     } catch (err) {
@@ -48,6 +75,7 @@ clearSession: async () => {
     console.error("Backend cleanup failed:", err)
   }
 
+  deleteCookie(CHAT_COOKIE)
   set({ session: null, messages: [] })
 },
 
@@ -65,6 +93,7 @@ clearSession: async () => {
       createdAt: new Date().toISOString(),
     }
     set({ messages: [...messages, userMsg], isChatLoading: true })
+    saveMessagesToCookie(get().messages)
 
     try {
       const res = await axiosInstance.post('/chat', {
@@ -77,7 +106,9 @@ clearSession: async () => {
         text: res.data.answer,
         createdAt: res.data.created_at || new Date().toISOString(),
       }
-      set({ messages: [...get().messages, assistantMsg] })
+      const updated = [...get().messages, assistantMsg]
+      set({ messages: updated })
+      saveMessagesToCookie(updated)
     } catch (err) {
       const msg = err?.response?.data?.error || 'Failed to get an answer'
       toast.error(msg)

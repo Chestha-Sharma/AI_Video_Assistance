@@ -1,4 +1,3 @@
-# app.py
 import os
 import tempfile
 import uuid
@@ -7,20 +6,21 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from dotenv import load_dotenv
+load_dotenv()
 
-from main import run_pipeline  # <-- ONLY import from backend/main
+from main import run_pipeline  
 
 app = FastAPI(title="AI Video Assistant API")
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_ORIGIN],          # tighten in production
+    allow_origins=[FRONTEND_ORIGIN], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# In-memory session store: session_id -> pipeline result dict
+ 
 SESSIONS: dict[str, dict] = {}
 
 
@@ -137,9 +137,6 @@ async def chat(body: ChatRequest):
     }
 
 if __name__ == "__main__":
-    import uvicorn
-    #for local host
-    # uvicorn.run("app:app", host="localhost", port=8000, reload=True)
-    #for production
+    import uvicorn 
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("app:app", host="localhost", port=port, reload=False)

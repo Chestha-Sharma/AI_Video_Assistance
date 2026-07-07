@@ -36,5 +36,5 @@ def run_pipeline(source: str, translate: bool = False):
     }
 
 
-if __name__ == "__main__":
-    run_pipeline("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+# if __name__ == "__main__":
+#     run_pipeline("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
