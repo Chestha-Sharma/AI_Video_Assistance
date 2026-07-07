@@ -6,8 +6,8 @@ import traceback
 from datetime import datetime
 from typing import Optional
 
-
  
+from CORE.rag_engine import ask_question 
 from CORE.rag_engine import ask_question
 from utils.audio_processor import process_input
 from CORE.transcriber import transcribe_all
@@ -207,9 +207,7 @@ async def clear_session(payload: ClearRequest):
                     vector_store.delete_collection()
                 except Exception as inner_e:
                     print(f"Could not delete collection: {inner_e}")
- 
-            # ── LAZY IMPORT FOR CLEAR ──
-            from CORE.vector_store import release_vector_store
+  
             release_vector_store(vector_store)
 
         if os.path.exists(UPLOAD_DIR):
