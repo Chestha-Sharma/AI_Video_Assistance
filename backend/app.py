@@ -6,16 +6,7 @@ import traceback
 from datetime import datetime
 from typing import Optional
 
- 
-from CORE.rag_engine import ask_question 
-from CORE.rag_engine import ask_question
-from utils.audio_processor import process_input
-from CORE.transcriber import transcribe_all
-from CORE.summarize import summarize, generate_title
-from CORE.extractor import extract_actionable_items, extract_key_decisions, extract_questions
-from CORE.rag_engine import build_rag_chain
-
-from fastapi import FastAPI, Request, File, UploadFile, Form, HTTPException, status
+from fastapi import FastAPI, Request, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -28,8 +19,9 @@ os.makedirs(VECTOR_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = FastAPI(title="AI Video Assistance Backend")
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")
-# CORS Setup - Open for production reliability to stop 'Failed to process' bugs
+
+# CORS Setup - Restricted to specific origin for security
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "https://ai-video-assistance.vercel.app")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_ORIGIN],
@@ -95,11 +87,8 @@ async def process_source(
         uploaded_path = None
         final_source = ""
 
-        # Check for multipart file upload
         if file is not None and file.filename != "":
             is_translate = translate.strip().lower() in ("true", "1", "yes", "y")
-            
-            # Safe filename extraction
             base_filename = os.path.basename(file.filename)
             save_path = os.path.join(UPLOAD_DIR, base_filename)
             
@@ -109,13 +98,11 @@ async def process_source(
             final_source = save_path
             uploaded_path = save_path
         else:
-            # Handle standard JSON body text fallback
             try:
                 body = await request.json()
                 final_source = (body.get("source") or "").strip()
                 is_translate = bool(body.get("translate", False))
             except Exception:
-                # If content was form data but without a file
                 if source:
                     final_source = source.strip()
                     is_translate = translate.strip().lower() in ("true", "1", "yes", "y")
@@ -123,6 +110,12 @@ async def process_source(
         if not final_source:
             raise HTTPException(status_code=400, detail="'source' or file upload is required")
 
+        # ── LAZY IMPORTS INSIDE THE FUNCTION ──
+        from utils.audio_processor import process_input
+        from CORE.transcriber import transcribe_all
+        from CORE.summarize import summarize, generate_title
+        from CORE.extractor import extract_actionable_items, extract_key_decisions, extract_questions
+        from CORE.rag_engine import build_rag_chain
 
         chunks = process_input(final_source)
         transcript = transcribe_all(chunks, is_translate)
@@ -176,6 +169,8 @@ async def chat(payload: ChatRequest):
         if not question:
             raise HTTPException(status_code=400, detail="'question' is required")
 
+        # ── LAZY IMPORT INSIDE THE FUNCTION ──
+        from CORE.rag_engine import ask_question
 
         rag_chain = SESSIONS[session_id]["rag_chain"]
         answer = ask_question(rag_chain, question)
@@ -207,7 +202,9 @@ async def clear_session(payload: ClearRequest):
                     vector_store.delete_collection()
                 except Exception as inner_e:
                     print(f"Could not delete collection: {inner_e}")
-  
+            
+            # ── LAZY IMPORT FOR CLEAR TO FIX MISSING IMPORT ──
+            from CORE.vector_store import release_vector_store
             release_vector_store(vector_store)
 
         if os.path.exists(UPLOAD_DIR):
@@ -228,4 +225,4 @@ async def clear_session(payload: ClearRequest):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
