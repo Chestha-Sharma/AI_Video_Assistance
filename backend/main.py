@@ -12,7 +12,7 @@ load_dotenv()
 def run_pipeline(source: str, translate: bool = False):
     print("Starting AI Video Assistance..........")
 
-    chunks = process_input(source)
+    chunks = process_input(source)  # list of chunk .wav file paths for this session
     transcript = transcribe_all(chunks, translate)
     print(f"raw transcription (first 300 characters): {transcript[:300]}")
 
@@ -22,7 +22,7 @@ def run_pipeline(source: str, translate: bool = False):
     key_decisions = extract_key_decisions(transcript)
     questions = extract_questions(transcript)
 
-    rag_chain, vector_store = build_rag_chain(transcript)   # <-- unpack tuple
+    rag_chain, vector_store = build_rag_chain(transcript)   # tuple unpack
 
     return {
         "title": title,
@@ -32,8 +32,10 @@ def run_pipeline(source: str, translate: bool = False):
         "key_decisions": key_decisions,
         "questions": questions,
         "rag_chain": rag_chain,
-        "vector_store": vector_store,   # cleanup ke liye /clear me use hoga
+        "vector_store": vector_store,
+        "audio_files": chunks,   # <-- naya field: is session ki saari chunk files ka path, cleanup ke liye
     }
+
 
 if __name__ == "__main__":
     run_pipeline("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
