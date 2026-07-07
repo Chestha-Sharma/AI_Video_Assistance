@@ -135,3 +135,7 @@ async def chat(body: ChatRequest):
         "answer": answer,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app:app", host="localhost", port=8000, reload=True)

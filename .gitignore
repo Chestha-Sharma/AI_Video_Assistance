@@ -40,3 +40,4 @@ frontend/*.local
 Thumbs.db
 
 downloads
+vector_db
