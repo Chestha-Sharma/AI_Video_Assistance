@@ -22,7 +22,7 @@ def run_pipeline(source: str, translate: bool = False):
     key_decisions = extract_key_decisions(transcript)
     questions = extract_questions(transcript)
 
-    rag_chain = build_rag_chain(transcript)
+    rag_chain, vector_store = build_rag_chain(transcript)   # <-- unpack tuple
 
     return {
         "title": title,
@@ -32,6 +32,8 @@ def run_pipeline(source: str, translate: bool = False):
         "key_decisions": key_decisions,
         "questions": questions,
         "rag_chain": rag_chain,
+        "vector_store": vector_store,   # cleanup ke liye /clear me use hoga
     }
 
- 
+if __name__ == "__main__":
+    run_pipeline("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
