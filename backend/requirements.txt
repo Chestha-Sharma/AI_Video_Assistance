@@ -54,3 +54,5 @@ uvicorn
 python-multipart
 
 static-ffmpeg
+langchain-chroma
+yt-dlp
