@@ -39,5 +39,3 @@ frontend/*.local
 .DS_Store
 Thumbs.db
 
-downloads
-vector_db
