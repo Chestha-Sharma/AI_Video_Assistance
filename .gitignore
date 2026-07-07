@@ -39,7 +39,6 @@ frontend/*.local
 .DS_Store
 Thumbs.db
 
-downloads
 vector_db
-
+downloads
 ai-video-assistant-backend
