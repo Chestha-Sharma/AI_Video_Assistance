@@ -22,7 +22,7 @@ def run_pipeline(source: str, translate: bool = False):
     key_decisions = extract_key_decisions(transcript)
     questions = extract_questions(transcript)
 
-    rag_chain, vector_store = build_rag_chain(transcript)   # tuple unpack
+    rag_chain = build_rag_chain(transcript) \
 
     return {
         "title": title,
@@ -31,9 +31,8 @@ def run_pipeline(source: str, translate: bool = False):
         "action_items": action_items,
         "key_decisions": key_decisions,
         "questions": questions,
-        "rag_chain": rag_chain,
-        "vector_store": vector_store,
-        "audio_files": chunks,   # <-- naya field: is session ki saari chunk files ka path, cleanup ke liye
+        "rag_chain": rag_chain, 
+        "audio_files": chunks,  
     }
 
 

@@ -12,7 +12,7 @@ from pydub import AudioSegment
 AudioSegment.converter = imageio_ffmpeg.get_ffmpeg_exe()
 
 DOWNLOAD_DIR = 'downloads'
-os.makedirs(DOWNLOAD_DIR,exist_ok = True) # if directory does not exist then it will make it
+os.makedirs(DOWNLOAD_DIR,exist_ok = True) # if directory not exist then it will make it
 
 
 def download_youtube_audio(url : str) -> str : # to download audio from youtube
