@@ -8,6 +8,7 @@ from typing import Optional
 
 
  
+from CORE.rag_engine import ask_question
 from utils.audio_processor import process_input
 from CORE.transcriber import transcribe_all
 from CORE.summarize import summarize, generate_title
@@ -175,8 +176,6 @@ async def chat(payload: ChatRequest):
         if not question:
             raise HTTPException(status_code=400, detail="'question' is required")
 
-        # ── LAZY IMPORT FOR CHAT ──
-        from CORE.rag_engine import ask_question
 
         rag_chain = SESSIONS[session_id]["rag_chain"]
         answer = ask_question(rag_chain, question)
